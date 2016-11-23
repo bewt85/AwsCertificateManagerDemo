@@ -14,6 +14,9 @@ Parameters:
     Route53HostedZoneId:
         Description: ID for the Route53 Hosted Zone which will hold the CNAME for this app
         Type: String
+    AppName:
+        Default: https_demo_fe
+        Type: String
 
 Resources:
     AppSecurityGroup:
@@ -79,8 +82,8 @@ Resources:
         Type: AWS::Route53::RecordSet
         Properties:
             HostedZoneId: !Ref Route53HostedZoneId
-            Comment: https_demo
-            Name: !Join [ ".", [ https_demo, !Ref AppsDomain, ""]]
+            Comment: !Ref AppName
+            Name: !Join [ ".", [ !Ref AppName, !Ref AppsDomain, ""]]
             Type: CNAME
             TTL: 60
             ResourceRecords:
@@ -126,4 +129,4 @@ Resources:
 
 Outputs:
     LoadBalancer:
-        Value: !Join [ ".", [ https_demo, !Ref AppsDomain ]]
+        Value: !Join [ ".", [ !Ref AppName, !Ref AppsDomain ]]

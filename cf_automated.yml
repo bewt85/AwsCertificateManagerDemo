@@ -20,14 +20,17 @@ Parameters:
     CreateElbBackendCertificatesArn:
         Description: ARN for the Lambda used to create backend certificates
         Type: String
+    AppName:
+        Default: https_demo_auto
+        Type: String
 
 Resources:
     ElbBackendCertificate:
         Type: Custom::ElbBackendCertificate
         Properties:
             ServiceToken: !Ref CreateElbBackendCertificatesArn
-            AppDomain: !Join [".", [ https_demo, !Ref AppsDomain ]]
-            AppName: https_demo
+            AppDomain: !Join [".", [ !Ref AppName, !Ref AppsDomain ]]
+            AppName: !Ref AppName
             AppS3Bucket: !Ref CertificateBucket
 
     AppSecurityGroup:
@@ -78,9 +81,9 @@ Resources:
                   Action:
                   - "s3:Get*"
                   - "s3:Head*"
-                  Resource: !Join [ "", [ "arn:aws:s3:::", !Ref CertificateBucket, "/backend-certificate-https_demo.json" ] ]
+                  Resource: !Join [ "", [ "arn:aws:s3:::", !Ref CertificateBucket, "/backend-certificate-", !Ref AppName, ".json" ] ]
             Roles:
-                Ref: AppRole
+                - Ref: AppRole
 
     AppProfile:
         Type: AWS::IAM::InstanceProfile
@@ -93,7 +96,7 @@ Resources:
         Type: AWS::AutoScaling::LaunchConfiguration
         Properties:
             ImageId: ami-a4d44ed7
-            IamInstanceProfile": !Ref AppProfile
+            IamInstanceProfile: !Ref AppProfile
             KeyName: !Ref KeyName
             SecurityGroups:
             - !GetAtt [AppSecurityGroup, GroupId]
@@ -165,7 +168,7 @@ Resources:
                           permissions: '0644'
                         runcmd:
                         - pip install flask gunicorn gevent boto3
-                        - /usr/local/bin/get_certs.py ${CertificateBucket} backend-certificate-http_demo.json
+                        - /usr/local/bin/get_certs.py ${CertificateBucket} backend-certificate-${AppName}.json
                         - sed -i 's/^ENABLED=0/ENABLED=1/' /etc/default/stunnel4
                         - touch /var/log/stunnel-elb-backend.log
                         - chown stunnel4 /var/log/stunnel-elb-backend.log /etc/stunnel/elb-backend-private.key /etc/stunnel/elb-backend-cert.pem
@@ -176,8 +179,8 @@ Resources:
         Type: AWS::Route53::RecordSet
         Properties:
             HostedZoneId: !Ref Route53HostedZoneId
-            Comment: https_demo
-            Name: !Join [ ".", [ https_demo, !Ref AppsDomain, ""]]
+            Comment: !Ref AppName
+            Name: !Join [ ".", [ !Ref AppName, !Ref AppsDomain, ""]]
             Type: CNAME
             TTL: 60
             ResourceRecords:
@@ -214,7 +217,7 @@ Resources:
               SSLCertificateId: !Ref AppsDomainSSLCertificate
               PolicyNames: []
             HealthCheck:
-                Target: "TCP:8443   "
+                Target: "TCP:8443"
                 HealthyThreshold: "3"
                 UnhealthyThreshold: "5"
                 Interval: "6"
@@ -236,4 +239,4 @@ Resources:
 
 Outputs:
     LoadBalancer:
-        Value: !Join [ ".", [ https_demo, !Ref AppsDomain ]]
+        Value: !Join [ ".", [ !Ref AppName, !Ref AppsDomain ]]
