@@ -194,7 +194,7 @@ Resources:
               SSLCertificateId: !Ref AppsDomainSSLCertificate
               PolicyNames: []
             HealthCheck:
-                Target: "TCP:8443   "
+                Target: "TCP:8443"
                 HealthyThreshold: "3"
                 UnhealthyThreshold: "5"
                 Interval: "6"
