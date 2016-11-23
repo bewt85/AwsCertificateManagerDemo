@@ -1,0 +1,99 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+    KeyName:
+        Description: The EC2 Key Pair to allow SSH access to the instances
+        Type: AWS::EC2::KeyPair::KeyName
+        ConstraintDescription: must be the name of an existing EC2 KeyPair
+
+Resources:
+    AppSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Limit access to the app instances
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 8080
+              ToPort: 8080
+              SourceSecurityGroupId: !GetAtt [ElbSecurityGroup, GroupId]
+
+    AppScalingGroup:
+        Type: AWS::AutoScaling::AutoScalingGroup
+        Properties:
+            AvailabilityZones: !GetAZs
+            LaunchConfigurationName: !Ref AppLaunchConfig
+            DesiredCapacity: 1
+            MinSize: 0
+            MaxSize: 2
+            LoadBalancerNames:
+            - !Ref ElasticLoadBalancer
+        UpdatePolicy:
+            AutoScalingRollingUpdate:
+                MinInstancesInService: 1
+                MaxBatchSize: 1
+
+    AppLaunchConfig:
+        Type: AWS::AutoScaling::LaunchConfiguration
+        Properties:
+        Properties:
+            ImageId: ami-a4d44ed7
+            KeyName: !Ref KeyName
+            SecurityGroups:
+            - !GetAtt [AppSecurityGroup, GroupId]
+            InstanceType: t2.nano
+            UserData:
+                !Base64 |
+                    #cloud-config
+                    ---
+                    packages:
+                    - git
+                    - python-pip
+                    write_files:
+                    - content: |
+                        from flask import Flask
+                        app = Flask(__name__)
+
+
+                        @app.route("/")
+                        def hello():
+                            return "Hello World!"
+
+                        if __name__ == "__main__":
+                            app.run(port=8080)
+                      path: /etc/hello.py
+                      permissions: '0644'
+                    runcmd:
+                    - pip install flask gunicorn
+                    - cd /etc/ && gunicorn hello:app -b 0.0.0.0:8080
+
+    ElbSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Limit access to the ELB
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 80
+              ToPort: 80
+              CidrIp: 0.0.0.0/0
+
+    ElasticLoadBalancer:
+        Type: AWS::ElasticLoadBalancing::LoadBalancer
+        Properties:
+            AvailabilityZones: !GetAZs
+            CrossZone: true
+            Listeners:
+            - LoadBalancerPort: 80
+              InstancePort: 8080
+              Protocol: HTTP
+            HealthCheck:
+                Target: "TCP:8080"
+                HealthyThreshold: "3"
+                UnhealthyThreshold: "5"
+                Interval: "6"
+                Timeout: "5"
+            SecurityGroups:
+            - !GetAtt [ElbSecurityGroup, GroupId]
+
+Outputs:
+    LoadBalancer:
+        Value: !GetAtt [ElasticLoadBalancer, DNSName]
