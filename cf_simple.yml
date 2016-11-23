@@ -63,8 +63,8 @@ Resources:
                       path: /etc/hello.py
                       permissions: '0644'
                     runcmd:
-                    - pip install flask gunicorn
-                    - cd /etc/ && gunicorn hello:app -b 0.0.0.0:8080
+                    - pip install flask gunicorn gevent
+                    - cd /etc/ && gunicorn hello:app -b 0.0.0.0:8080 -k gevent
 
     ElbSecurityGroup:
         Type: AWS::EC2::SecurityGroup
