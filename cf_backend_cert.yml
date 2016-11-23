@@ -22,10 +22,6 @@ Resources:
             GroupDescription: Limit access to the app instances
             SecurityGroupIngress:
             - IpProtocol: tcp
-              FromPort: 8080
-              ToPort: 8080
-              SourceSecurityGroupId: !GetAtt [ElbSecurityGroup, GroupId]
-            - IpProtocol: tcp
               FromPort: 8443
               ToPort: 8443
               SourceSecurityGroupId: !GetAtt [ElbSecurityGroup, GroupId]
@@ -151,7 +147,7 @@ Resources:
                     - touch /var/log/stunnel-elb-backend.log
                     - chown stunnel4 /var/log/stunnel-elb-backend.log /etc/stunnel/elb-backend-private.key /etc/stunnel/elb-backend-cert.pem
                     - systemctl restart stunnel4
-                    - cd /etc/ && gunicorn hello:app -b 0.0.0.0:8080 -k gevent
+                    - cd /etc/ && gunicorn hello:app -b 127.0.0.1:8080 -k gevent
 
     Route53RecordSet:
         Type: AWS::Route53::RecordSet
@@ -185,8 +181,9 @@ Resources:
             CrossZone: true
             Listeners:
             - LoadBalancerPort: 80
-              InstancePort: 8080
+              InstancePort: 8443
               Protocol: HTTP
+              InstanceProtocol: HTTPS
             - LoadBalancerPort: 443
               InstancePort: 8443
               Protocol: HTTPS
@@ -194,7 +191,7 @@ Resources:
               SSLCertificateId: !Ref AppsDomainSSLCertificate
               PolicyNames: []
             HealthCheck:
-                Target: "TCP:8080"
+                Target: "TCP:8443"
                 HealthyThreshold: "3"
                 UnhealthyThreshold: "5"
                 Interval: "6"
