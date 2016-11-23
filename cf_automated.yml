@@ -1,0 +1,239 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+    KeyName:
+        Description: The EC2 Key Pair to allow SSH access to the instances
+        Type: AWS::EC2::KeyPair::KeyName
+        ConstraintDescription: must be the name of an existing EC2 KeyPair
+    AppsDomain:
+        Description: Base domain shared between all apps
+        Type: String
+    AppsDomainSSLCertificate:
+        Type: String
+        Description: ARN of AWS Certificate Manager certificate for *.{AppsDomain}
+    Route53HostedZoneId:
+        Description: ID for the Route53 Hosted Zone which will hold the CNAME for this app
+        Type: String
+    CertificateBucket:
+        Description: Bucket used to store app certificates
+        Type: String
+    CreateElbBackendCertificatesArn:
+        Description: ARN for the Lambda used to create backend certificates
+        Type: String
+
+Resources:
+    ElbBackendCertificate:
+        Type: Custom::ElbBackendCertificate
+        Properties:
+            ServiceToken: !Ref CreateElbBackendCertificatesArn
+            AppDomain: !Join [".", [ https_demo, !Ref AppsDomain ]]
+            AppName: https_demo
+            AppS3Bucket: !Ref CertificateBucket
+
+    AppSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Limit access to the app instances
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 8443
+              ToPort: 8443
+              SourceSecurityGroupId: !GetAtt [ElbSecurityGroup, GroupId]
+
+    AppScalingGroup:
+        Type: AWS::AutoScaling::AutoScalingGroup
+        Properties:
+            AvailabilityZones: !GetAZs
+            LaunchConfigurationName: !Ref AppLaunchConfig
+            DesiredCapacity: 1
+            MinSize: 0
+            MaxSize: 2
+            LoadBalancerNames:
+            - !Ref ElasticLoadBalancer
+        UpdatePolicy:
+            AutoScalingRollingUpdate:
+                MinInstancesInService: 1
+                MaxBatchSize: 1
+
+    AppRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Statement:
+                - Effect: Allow
+                  Principal:
+                    Service:
+                    - ec2.amazonaws.com
+                  Action:
+                    - sts:AssumeRole
+            Path: "/"
+
+    AppPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyName: AppRole
+            PolicyDocument:
+                Statement:
+                - Effect: Allow
+                  Action:
+                  - "s3:Get*"
+                  - "s3:Head*"
+                  Resource: !Join [ "", [ "arn:aws:s3:::", !Ref CertificateBucket, "/backend-certificate-https_demo.json" ] ]
+            Roles:
+                Ref: AppRole
+
+    AppProfile:
+        Type: AWS::IAM::InstanceProfile
+        Properties:
+            Path: "/"
+            Roles:
+            - Ref: AppRole
+
+    AppLaunchConfig:
+        Type: AWS::AutoScaling::LaunchConfiguration
+        Properties:
+            ImageId: ami-a4d44ed7
+            IamInstanceProfile": !Ref AppProfile
+            KeyName: !Ref KeyName
+            SecurityGroups:
+            - !GetAtt [AppSecurityGroup, GroupId]
+            InstanceType: t2.nano
+            UserData:
+                "Fn::Base64":
+                    !Sub |
+                        #cloud-config
+                        ---
+                        packages:
+                        - git
+                        - python-pip
+                        - stunnel4
+                        write_files:
+                        - content: |
+                            from flask import Flask
+                            app = Flask(__name__)
+
+
+                            @app.route("/")
+                            def hello():
+                                return "Hello World!"
+
+                            if __name__ == "__main__":
+                                app.run(port=8080)
+                          path: /etc/hello.py
+                          permissions: '0644'
+                        - content: |
+                            #!/usr/bin/env python
+
+                            import boto3
+                            import json
+                            import sys
+
+                            assert len(sys.argv) == 3, "Syntax is '{} S3_BUCKET S3_KEY'".format(sys.argv[0])
+                            certificates_s3_bucket = sys.argv[1]
+                            certificates_s3_key = sys.argv[2]
+
+                            s3_client = boto3.client("s3")
+                            response = s3_client.get_object(
+                                Bucket=certificates_s3_bucket,
+                                Key=certificates_s3_key,
+                            )
+                            content = response['Body'].read()
+                            data = json.loads(content)
+
+                            private_key = data['private_key'].encode("utf-8")
+                            certificate = data['certificate'].encode("utf-8")
+
+                            with open("/etc/stunnel/elb-backend-cert.pem", 'w') as cert_file:
+                                cert_file.write(certificate.decode("utf-8"))
+                            with open("/etc/stunnel/elb-backend-private.key", 'w') as key_file:
+                                key_file.write(private_key.decode("utf-8"))
+                          path: /usr/local/bin/get_certs.py
+                          permissions: '0755'
+                        - content: |
+                            output=/var/log/stunnel-elb-backend.log
+                            pid=/var/run/stunnel4/elb-backend.pid
+                            setuid=stunnel4
+                            setgid=stunnel4
+                            client=no
+
+                            [ELB]
+                            cert=/etc/stunnel/elb-backend-cert.pem
+                            key=/etc/stunnel/elb-backend-private.key
+                            accept=0.0.0.0:8443
+                            connect=127.0.0.1:8080
+                          path: /etc/stunnel/elb-backend.conf
+                          permissions: '0644'
+                        runcmd:
+                        - pip install flask gunicorn gevent boto3
+                        - /usr/local/bin/get_certs.py ${CertificateBucket} backend-certificate-http_demo.json
+                        - sed -i 's/^ENABLED=0/ENABLED=1/' /etc/default/stunnel4
+                        - touch /var/log/stunnel-elb-backend.log
+                        - chown stunnel4 /var/log/stunnel-elb-backend.log /etc/stunnel/elb-backend-private.key /etc/stunnel/elb-backend-cert.pem
+                        - systemctl restart stunnel4
+                        - cd /etc/ && gunicorn hello:app -b 127.0.0.1:8080 -k gevent
+
+    Route53RecordSet:
+        Type: AWS::Route53::RecordSet
+        Properties:
+            HostedZoneId: !Ref Route53HostedZoneId
+            Comment: https_demo
+            Name: !Join [ ".", [ https_demo, !Ref AppsDomain, ""]]
+            Type: CNAME
+            TTL: 60
+            ResourceRecords:
+            - !GetAtt [ ElasticLoadBalancer, DNSName ]
+
+    ElbSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Limit access to the ELB
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 80
+              ToPort: 80
+              CidrIp: 0.0.0.0/0
+            - IpProtocol: tcp
+              FromPort: 443
+              ToPort: 443
+              CidrIp: 0.0.0.0/0
+
+    ElasticLoadBalancer:
+        Type: AWS::ElasticLoadBalancing::LoadBalancer
+        Properties:
+            AvailabilityZones: !GetAZs
+            CrossZone: true
+            Listeners:
+            - LoadBalancerPort: 80
+              InstancePort: 8443
+              Protocol: HTTP
+              InstanceProtocol: HTTPS
+            - LoadBalancerPort: 443
+              InstancePort: 8443
+              Protocol: HTTPS
+              InstanceProtocol: HTTPS
+              SSLCertificateId: !Ref AppsDomainSSLCertificate
+              PolicyNames: []
+            HealthCheck:
+                Target: "TCP:8443   "
+                HealthyThreshold: "3"
+                UnhealthyThreshold: "5"
+                Interval: "6"
+                Timeout: "5"
+            SecurityGroups:
+            - !GetAtt [ElbSecurityGroup, GroupId]
+            Policies:
+            - PolicyName: BackendPublicKeyPolicy
+              PolicyType: PublicKeyPolicyType
+              Attributes:
+              - Name: PublicKey
+                Value: !GetAtt [ ElbBackendCertificate, PublicKey ]
+            - PolicyName: BackendServerAuthenticationPolicy
+              PolicyType: BackendServerAuthenticationPolicyType
+              Attributes:
+              - Name: PublicKeyPolicyName
+                Value: BackendPublicKeyPolicy
+              InstancePorts: [ "8443" ]
+
+Outputs:
+    LoadBalancer:
+        Value: !Join [ ".", [ https_demo, !Ref AppsDomain ]]
