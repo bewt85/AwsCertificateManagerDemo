@@ -22,6 +22,8 @@ As an aside, this repo also gives you a bit of background on how CloudFormation 
 
 [The first template](cf_simple.yml) sets up a load balancer with an autoscalling group of servers behind it.  There is no connection encryption in this example.
 
-To give it a go just download [the template](cf_simple.yml), go into the AWS CloudFormation console and ...
+To give it a go just download [the template](cf_simple.yml), go into the AWS CloudFormation console, create a new stack, select the option to upload the CloudFormation template to S3 and give it `cf_simple.yml`.
 
-More to follow
+You then need to give your new stack a name (e.g. `simple`).  I've also created a parameter for an SSH key which will be loaded 
+
+--- More TODO
