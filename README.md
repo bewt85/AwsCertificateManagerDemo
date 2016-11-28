@@ -68,9 +68,9 @@ AppScalingGroup:
             MaxBatchSize: 1
 ```
 
-The first question you might have is "Why are you using an autoscaling group to load just one instance, why not just make an EC2 instance"?  Well it's a pretty convenient way of configuring which instances the load balancer should send traffic to, I can easily add health checks to recreate the instances if they die; and it makes it easier to add instances in the future.  It's much harder to do this if I start with a single EC2 instance and using autoscale groups is free so why not?
+The first question you might have is "Why are you using an autoscaling group to load just one instance, why not just make an EC2 instance"?  Well it's a pretty convenient way of configuring which instances the load balancer should send traffic to; I can easily add health checks to recreate the instances if they die; and it makes it easier to add instances in the future.  If I had started with an EC2 instance, these features would have been harder to add later.  Autoscale groups are free so why not use them?
 
-You might also wonder why I set `DesiredCapacity` to 1 and the `MaxSize` to 2.  The reason is that the `UpdatePolicy` creates new servers before deleting old ones and CloudFormation gets upset if I don't set `MaxSize` to be N+1.  If I was doing this properly, I would also use health checks to make sure that new instances were up and running before deleting old ones, but this demo is already getting a bit complicated!
+You might also wonder why I set `DesiredCapacity` to 1 and the `MaxSize` to 2.  The reason is that the `UpdatePolicy` creates new servers before deleting old ones and CloudFormation gets upset if I don't set `MaxSize` to be N+1.  If I was doing this properly, I would also use health checks to make sure that new instances were up and running before deleting old ones, but I'm trying to keep the demo simple.
 
 ```
 AppLaunchConfig:
@@ -95,7 +95,7 @@ AppLaunchConfig:
 
                     @app.route("/")
                     def hello():
-                        return "Hello World!"
+                        return "Hello, World!"
 
                     if __name__ == "__main__":
                         app.run(port=8080)
@@ -106,9 +106,9 @@ AppLaunchConfig:
                 - cd /etc/ && gunicorn hello:app -b 0.0.0.0:8080 -k gevent
 ```
 
-The `AppLaunchConfig` shows you how to use functions to refer to attributes of other template resources, for example `!GetAtt [AppSecurityGroup, GroupId]` gets the details of the security group for these instances.  I've also used the `UserData` parameter to write a "Hello, World!" web service onto the instance, install the dependencies it needs and start it up at boot time.  This is not how you should deploy you real applications: it's not very maintainable if you want you service to say something different; and there is nothing to restart the service if it falls over.  Also it's running as the root user which is very bad practice.
+The `AppLaunchConfig` shows you how to use functions to refer to attributes of other template resources, for example `!GetAtt [AppSecurityGroup, GroupId]` gets the details of the security group for these instances.  I've also used the `UserData` parameter to write a "Hello, World!" web service onto the instance, install the dependencies it needs and start it up at boot time.  This is not how you should deploy your real applications: it's not very maintainable if you want your service to say something different; and there is nothing to restart the service if it falls over.  Also it's running as the root user which is very bad practice.
 
-There's more that's a bit dodgy about this template (like hardcoding the region, only supporting the AMI in that region, etc) but I've made compromises to make the demo a bit easier.
+There's more that's dodgy about this template (like hardcoding the region, only supporting the AMI in that region, etc.) but I've made compromises to make the demo a bit easier.
 
 ## Step 2 - SSL on the frontend
 
