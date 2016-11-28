@@ -22,9 +22,7 @@ As an aside, this repo also gives you a bit of background on how CloudFormation 
 
 [The first template](cf_simple.yml) sets up a load balancer with an autoscalling group of servers behind it.  There is no connection encryption in this example.
 
-To give it a go just download [the template](cf_simple.yml) and log into the AWS concole.  These templates use a hard coded AMI which only works in the Ireland datacentre so charge to EU (Ireland) in the top right drop down.
-
-Under "Services" in the top left, select CloudFormation.  Select "Create a new stack", select the option to upload the CloudFormation template to S3 and browse to where you downloaded `cf_simple.yml`.
+To give it a go just click this button: [![Launch button for cf_simple.yml](https://github.com/bewt85/AwsCertificateManagerDemo/raw/master/images/cloudformation-launch-stack.png "Launch cf_simple.yml")](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=simple&templateURL=https://github.com/bewt85/AwsCertificateManagerDemo/raw/master/cf_simple.yml)
 
 On the next screen, give your new stack a name (e.g. `simple`).  The default values for the next screen are fine so click "Next" and then "Create" on the Review screen.
 
@@ -34,4 +32,4 @@ You should see something like this.  If you click on the "simple" stack, you sho
 
 In the mean time, lets have a quick look at the template we used.
 
-The template is written in [YAML])http://yaml.org/) and can have a few top level keys.  These are `AWSTemplateFormatVersion` which always seems to be `2010-09-09`; `Parameters` which describes the inputs to the templates; `Resources` which defines and configures the AWS resources we want and `Outputs` which are values we want to output from the template for refrence or so that they can be consumed by other templates.  You can also add a `Description` for the template and `Mappings` which can be used to lookup values using others (e.g. lookup the correct AMI using a region).  In this example I've not even used `Parameters` because we don't need any.
+The template is written in [YAML](http://yaml.org/) and can have a few top level keys.  These are `AWSTemplateFormatVersion` which always seems to be `2010-09-09`; `Parameters` which describes the inputs to the templates; `Resources` which defines and configures the AWS resources we want and `Outputs` which are values we want to output from the template for refrence or so that they can be consumed by other templates.  You can also add a `Description` for the template and `Mappings` which can be used to lookup values using others (e.g. lookup the correct AMI using a region).  In this example I've not even used `Parameters` because we don't need any.
