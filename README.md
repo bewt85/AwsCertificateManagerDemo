@@ -14,7 +14,7 @@ The challenge is to securely connect the load balancer to the instances actually
 
 This repo leads you through the steaps to apply end to end encryption for a collection of instances using AWS Certificate Manager, ELB, AWS Lambda, CloudFormation and S3.  Eventually your architecture will look a bit like this:
 
-![User traffic is terminated on ELB, traffic is re-encrypted between the ELB and instances using a self signed certificate which is created by AWS Lambda and loaded from S3 when the instances boot](https://github.com/bewt85/AwsCertificateManagerDemo/raw/master/acm_s3_ssl_cert_demo.png "Architecture overview")
+![User traffic is terminated on ELB, traffic is re-encrypted between the ELB and instances using a self signed certificate which is created by AWS Lambda and loaded from S3 when the instances boot](https://github.com/bewt85/AwsCertificateManagerDemo/raw/master/images/acm_s3_ssl_cert_demo.png "Architecture overview")
 
 As an aside, this repo also gives you a bit of background on how CloudFormation works and how to use Custom Resources (powered by Lambda) to do more powerful things.
 
@@ -22,8 +22,16 @@ As an aside, this repo also gives you a bit of background on how CloudFormation 
 
 [The first template](cf_simple.yml) sets up a load balancer with an autoscalling group of servers behind it.  There is no connection encryption in this example.
 
-To give it a go just download [the template](cf_simple.yml), go into the AWS CloudFormation console, create a new stack, select the option to upload the CloudFormation template to S3 and give it `cf_simple.yml`.
+To give it a go just download [the template](cf_simple.yml) and log into the AWS concole.  These templates use a hard coded AMI which only works in the Ireland datacentre so charge to EU (Ireland) in the top right drop down.
 
-You then need to give your new stack a name (e.g. `simple`).  I've also created a parameter for an SSH key which will be loaded 
+Under "Services" in the top left, select CloudFormation.  Select "Create a new stack", select the option to upload the CloudFormation template to S3 and browse to where you downloaded `cf_simple.yml`.
 
---- More TODO
+On the next screen, give your new stack a name (e.g. `simple`).  The default values for the next screen are fine so click "Next" and then "Create" on the Review screen.
+
+![Example of the AWS CloudFormation console after creating a stack called "simple".  It shows unread events at the bottom](https://github.com/bewt85/AwsCertificateManagerDemo/raw/master/images/create_simple_stack.png "After creating a simple stack")
+
+You should see something like this.  If you click on the "simple" stack, you should see the events as they happen; otherwise you might need to click the refresh icon in the top right.  When the status changes to "CREATE_COMPLETE" you can click on the "Outputs" tab and copy the URL for the load balanced app.  Note that the app isn't actually up and running yet; the servers have been created but they won't actually be serving the app for around 2 minutes.
+
+In the mean time, lets have a quick look at the template we used.
+
+The template is written in [YAML])http://yaml.org/) and can have a few top level keys.  These are `AWSTemplateFormatVersion` which always seems to be `2010-09-09`; `Parameters` which describes the inputs to the templates; `Resources` which defines and configures the AWS resources we want and `Outputs` which are values we want to output from the template for refrence or so that they can be consumed by other templates.  You can also add a `Description` for the template and `Mappings` which can be used to lookup values using others (e.g. lookup the correct AMI using a region).  In this example I've not even used `Parameters` because we don't need any.
