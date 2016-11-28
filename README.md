@@ -46,7 +46,58 @@ The documentation for each resource is pretty easy to find by searching for the 
 
 The first question you might have is "Why are you using an autoscaling group to load just one instance"?  Well it's a pretty convenient way of configuring the load balancer, I can easily add health checks to recreate the server if it dies; and it makes it easier to add instances in the future.  It's much harder to do this if I start with a single EC2 instance and using autoscale groups is free so why not?
 
+```
+AppScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+        AvailabilityZones: !GetAZs
+        LaunchConfigurationName: !Ref AppLaunchConfig
+        DesiredCapacity: 1
+        MinSize: 0
+        MaxSize: 2
+        LoadBalancerNames:
+        - !Ref ElasticLoadBalancer
+    UpdatePolicy:
+        AutoScalingRollingUpdate:
+            MinInstancesInService: 1
+            MaxBatchSize: 1
+```
+
 More interestingly you might wonder why I set desired instances to 1 and the maximum to 2.  The reason is that my deployment process creates new servers before deleting old ones and CloudFormation gets upset if I don't set `MaxSize` to be N+1.  If I was doing this properly, I would also use HealthChecks to make sure that new instances were up and running before deleting old ones but this demo is already getting a bit complicated!
+
+```
+AppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+        ImageId: ami-a4d44ed7
+        SecurityGroups:
+        - !GetAtt [AppSecurityGroup, GroupId]
+        InstanceType: t2.nano
+        UserData:
+            !Base64 |
+                #cloud-config
+                ---
+                packages:
+                - git
+                - python-pip
+                write_files:
+                - content: |
+                    from flask import Flask
+                    app = Flask(__name__)
+
+
+                    @app.route("/")
+                    def hello():
+                        return "Hello World!"
+
+                    if __name__ == "__main__":
+                        app.run(port=8080)
+                  path: /etc/hello.py
+                  permissions: '0644'
+                runcmd:
+                - pip install flask gunicorn gevent
+                - cd /etc/ && gunicorn hello:app -b 0.0.0.0:8080 -k gevent
+```
 
 The `AppLaunchConfig` is also interesting.  It gives you an example of using functions to refer to attributes of other template resources (e.g. `!GetAtt [AppSecurityGroup, GroupId]` which gets the details of the security group used to configure firewalls for these instances).  I've also used the `UserData` parameter to write a "Hello, World!" web service onto the instance, install the dependencies it needs and start it up at boot time.  This is not how you should load you applications: it's not very maintainable if you want you service to say something different; and there is nothing to restart the service if it falls over.  Also it's running as the root user which is very bad practice.
 
