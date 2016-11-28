@@ -22,9 +22,7 @@ As an aside, this repo also gives you a bit of background on how CloudFormation 
 
 [The first template](cf_simple.yml) sets up a load balancer with an autoscalling group of servers behind it.  There is no connection encryption in this example.
 
-To give it a go just download [the template](cf_simple.yml) and log into the AWS concole.  These templates use a hard coded AMI which only works in the Ireland datacentre so charge to EU (Ireland) in the top right drop down.
-
-Under "Services" in the top left, select CloudFormation.  Select "Create a new stack", select the option to upload the CloudFormation template to S3 and browse to where you downloaded `cf_simple.yml`.
+To give it a go just download [the template](cf_simple.yml) and [log into the AWS console and select the CloudFormation service](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=simple).  These templates use a hard coded AMI which only works in the Ireland region.  Select the option to upload the CloudFormation template to S3 and browse to where you downloaded `cf_simple.yml`.
 
 On the next screen, give your new stack a name (e.g. `simple`).  The default values for the next screen are fine so click "Next" and then "Create" on the Review screen.
 
