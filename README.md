@@ -32,4 +32,22 @@ You should see something like this.  If you click on the "simple" stack, you sho
 
 In the mean time, lets have a quick look at the template we used.
 
-The template is written in [YAML])http://yaml.org/) and can have a few top level keys.  These are `AWSTemplateFormatVersion` which always seems to be `2010-09-09`; `Parameters` which describes the inputs to the templates; `Resources` which defines and configures the AWS resources we want and `Outputs` which are values we want to output from the template for refrence or so that they can be consumed by other templates.  You can also add a `Description` for the template and `Mappings` which can be used to lookup values using others (e.g. lookup the correct AMI using a region).  In this example I've not even used `Parameters` because we don't need any.
+The template is written in [YAML](http://yaml.org/) and can have a few top level keys.  These are `AWSTemplateFormatVersion` which always seems to be `2010-09-09`; `Parameters` which describes the inputs to the templates; `Resources` which defines and configures the AWS resources we want and `Outputs` which are values we want to output from the template for refrence or so that they can be consumed by other templates.  You can also add a `Description` for the template and `Mappings` which can be used to lookup values using others (e.g. lookup the correct AMI using a region).  In this example I've not even used `Parameters` because we don't need any.
+
+The template creates a few resources:
+
+* `AppSecurityGroup` a security group (`Type: AWS::EC2::SecurityGroup`) to configure firewall rules for the app instances
+* `AppScalingGroup` an autoscaling group (`Type: AWS::AutoScaling::AutoScalingGroup`) for the app instances
+* `AppLaunchConfig` some configuration (`Type: AWS::AutoScaling::LaunchConfiguration`) for each of the app instances (including the hello world source code)
+* `ElbSecurityGroup` a security group (`Type: AWS::EC2::SecurityGroup`) to configure firewall rules for the load balancer
+* `ElasticLoadBalancer` the load balancer (`Type: AWS::ElasticLoadBalancing::LoadBalancer`) itself
+
+The documentation for each resource is pretty easy to find by searching for the `Type` (e.g. `AWS::ElasticLoadBalancing::LoadBalancer`).  The two interesting ones here are the `AppScalingGroup` and the `AppLaunchConfig`.
+
+The first question you might have is "Why are you using an autoscaling group to load just one instance"?  Well it's a pretty convenient way of configuring the load balancer, I can easily add health checks to recreate the server if it dies; and it makes it easier to add instances in the future.  It's much harder to do this if I start with a single EC2 instance and using autoscale groups is free so why not?
+
+More interestingly you might wonder why I set desired instances to 1 and the maximum to 2.  The reason is that my deployment process creates new servers before deleting old ones and CloudFormation gets upset if I don't set `MaxSize` to be N+1.  If I was doing this properly, I would also use HealthChecks to make sure that new instances were up and running before deleting old ones but this demo is already getting a bit complicated!
+
+The `AppLaunchConfig` is also interesting.  It gives you an example of using functions to refer to attributes of other template resources (e.g. `!GetAtt [AppSecurityGroup, GroupId]` which gets the details of the security group used to configure firewalls for these instances).  I've also used the `UserData` parameter to write a "Hello, World!" web service onto the instance, install the dependencies it needs and start it up at boot time.  This is not how you should load you applications: it's not very maintainable if you want you service to say something different; and there is nothing to restart the service if it falls over.  Also it's running as the root user which is very bad practice.
+
+There's more that's a bit dodgy about this template (like hardcoding the region, only supporting the AMI in that region, etc) but I've made compromises to make the demo a bit easier.
