@@ -1,10 +1,6 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
 Parameters:
-    KeyName:
-        Description: The EC2 Key Pair to allow SSH access to the instances
-        Type: AWS::EC2::KeyPair::KeyName
-        ConstraintDescription: must be the name of an existing EC2 KeyPair
     AppsDomain:
         Description: Base domain shared between all apps
         Type: String
@@ -49,7 +45,6 @@ Resources:
         Properties:
         Properties:
             ImageId: ami-a4d44ed7
-            KeyName: !Ref KeyName
             SecurityGroups:
             - !GetAtt [AppSecurityGroup, GroupId]
             InstanceType: t2.nano
