@@ -102,3 +102,9 @@ AppLaunchConfig:
 The `AppLaunchConfig` is also interesting.  It gives you an example of using functions to refer to attributes of other template resources (e.g. `!GetAtt [AppSecurityGroup, GroupId]` which gets the details of the security group used to configure firewalls for these instances).  I've also used the `UserData` parameter to write a "Hello, World!" web service onto the instance, install the dependencies it needs and start it up at boot time.  This is not how you should load you applications: it's not very maintainable if you want you service to say something different; and there is nothing to restart the service if it falls over.  Also it's running as the root user which is very bad practice.
 
 There's more that's a bit dodgy about this template (like hardcoding the region, only supporting the AMI in that region, etc) but I've made compromises to make the demo a bit easier.
+
+## Step 2 - SSL on the frontend
+
+So the next step is to add SSL to connections to the load balancer.  For this I will need a domain that I control (in this case "benmade.it") and a certificate.
+
+For the first one I went into -- More to follow.
