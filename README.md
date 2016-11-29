@@ -108,10 +108,30 @@ AppLaunchConfig:
 
 The `AppLaunchConfig` shows you how to use functions to refer to attributes of other template resources, for example `!GetAtt [AppSecurityGroup, GroupId]` gets the details of the security group for these instances.  I've also used the `UserData` parameter to write a "Hello, World!" web service onto the instance, install the dependencies it needs and start it up at boot time.  This is not how you should deploy your real applications: it's not very maintainable if you want your service to say something different; and there is nothing to restart the service if it falls over.  Also it's running as the root user which is very bad practice.
 
-There's more that's dodgy about this template (like hardcoding the region, only supporting the AMI in that region, etc.) but I've made compromises to make the demo a bit easier.
+By now the stack should have been deployed and we can check on the web service.  Return to the CloudFormation console, click on the stack we just created, click on the "Outputs" tab and copy and paste the URL listed into the address bar.  If you've been patient enough, you should be greeted by the words "Hello, World!".
+
+There's more that's dodgy about this template (like hardcoding the region, only supporting the AMI in that region, etc.) but I've made compromises to make the demo a bit easier.  Now that we're done with this demo, click on the stack, click Actions and delete the template.  This will delete all of the resources we've used so far automatically (and stop you being billed for them).
 
 ## Step 2 - SSL on the frontend
 
-So the next step is to add SSL to connections to the load balancer.  For this I will need a domain that I control (in this case "benmade.it") and a certificate.
+The next step is to add SSL to connections to the load balancer.  For this I will need a domain that I control (in this case "benmade.it") and a certificate.
 
-For the first one I went into -- More to follow.
+First I need to create a "Hosted Zone" in [Route 53](https://console.aws.amazon.com/route53/home?region=eu-west-1#hosted-zones:).  Route 53 is Amazon's DNS service which we will use to direct traffic to the correct load balancer.  In my case I also used Route 53 to buy the "benmade.it" domain and the Hosted Zone was setup as part of this process.  If you want to use a domain that you already control then have a look at the documentation for [migrating a domain to Route 53](http://docs.aws.amazon.com/Route53/latest/DeveloperGuide/MigratingDNS.html) or the documentation for [migrating a subdomain](http://docs.aws.amazon.com/Route53/latest/DeveloperGuide/CreatingNewSubdomain.html).
+
+When you have the Hosted Zone setup, make a note of its "Hosted Zone ID" which in my case was "Z2MFW6JEDJ91GG".
+
+Next we need to create a new frontend certificate in [Amazon Certificate Manager](https://eu-west-1.console.aws.amazon.com/acm/home?region=eu-west-1#/) (ACM).  To do this, just click "Request a certificate" and provide the domain you want to get a certificate for.  In my case I picked a wildcard certificate for "*.demo.benmade.it" which I use for all of the demos.
+
+ACM checks that you're authorised to have this certificate by emailing the following:
+
+* administrator@benmade.it
+* webmaster@benmade.it
+* hostmaster@benmade.it
+* admin@benmade.it
+* postmaster@benmade.it
+
+When they get the email, they just need to click the link and follow the instructions on the screen.  If your administrator doesn't get this email (for example because these email addresses are not monitored) then you need to request the certificate using the API or the Amazon CLI.  There are more details in the [domain validation documentation](https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-validate.html).
+
+When your administrator has verified ownership of the domain, the status should change from "Pending validation" to "Issued".  Click on the certificate and make a note of its ARN.
+
+It's now time to create a new stack from the [cf_frontend_cert.yml](cf_frontend_cert.yml] template.  In this case it will ask you for a name for your app (e.g. `foo`) and an `apps`  -- More to do & fixme <<
