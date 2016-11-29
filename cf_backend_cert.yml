@@ -1,18 +1,15 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
 Parameters:
-    AppsDomain:
-        Description: Base domain shared between all apps
+    Domain:
+        Description: A domain to host your web service on (e.g. foo.demo.benmade.it)
         Type: String
-    AppsDomainSSLCertificate:
+    SSLCertificate:
         Type: String
-        Description: ARN of AWS Certificate Manager certificate for *.{AppsDomain}
+        Description: ARN of AWS Certificate Manager certificate for Domain
     Route53HostedZoneId:
         Description: ID for the Route53 Hosted Zone which will hold the CNAME for this app
-        Type: String
-    AppName:
-        Default: https_demo_be
-        Type: String
+        Type: AWS::Route53::HostedZone::Id
 
 Resources:
     AppSecurityGroup:
@@ -151,8 +148,8 @@ Resources:
         Type: AWS::Route53::RecordSet
         Properties:
             HostedZoneId: !Ref Route53HostedZoneId
-            Comment: !Ref AppName
-            Name: !Join [ ".", [ !Ref AppName, !Ref AppsDomain, ""]]
+            Comment: !Ref Domain
+            Name: !Join [ ".", [ !Ref Domain, ""]]
             Type: CNAME
             TTL: 60
             ResourceRecords:
@@ -186,7 +183,7 @@ Resources:
               InstancePort: 8443
               Protocol: HTTPS
               InstanceProtocol: HTTPS
-              SSLCertificateId: !Ref AppsDomainSSLCertificate
+              SSLCertificateId: !Ref SSLCertificate
               PolicyNames: []
             HealthCheck:
                 Target: "TCP:8443"
@@ -218,4 +215,4 @@ Resources:
 
 Outputs:
     LoadBalancer:
-        Value: !Join [ ".", [ !Ref AppName, !Ref AppsDomain ]]
+        Value: !Ref Domain
