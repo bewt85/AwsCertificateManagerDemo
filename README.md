@@ -134,4 +134,152 @@ When they get the email, they just need to click the link and follow the instruc
 
 When your administrator has verified ownership of the domain, the status should change from "Pending validation" to "Issued".  Click on the certificate and make a note of its ARN.
 
-It's now time to create a new stack from the [cf_frontend_cert.yml](cf_frontend_cert.yml] template.  In this case it will ask you for a name for your app (e.g. `foo`) and an `apps`  -- More to do & fixme <<
+It's now time to create a new stack from the [cf_frontend_cert.yml](cf_frontend_cert.yml] template.  In this case it will ask you for:
+
+* the domain you app is served on (e.g. "frontend.demo.benmade.it");
+* the ARN for the certificate you created in ACM which matches the domain (in my case "arn:aws:acm:eu-west-1:844611257690:certificate/6fdce02f-c3c9-4c0a-82fe-33dfa62d0acb"); and
+* the Hosted Zone ID in Route 53 which you use to administer that domain (in my case "Z2MFW6JEDJ91GG").
+
+Notice that `Route53HostedZoneId` gives you a lookup for your Hosted Zones.  That's because I set the type to `AWS::Route53::HostedZone::Id`.  Similarly you can limit parameters to things like SSH keys or security groups (see the [parameter documentation](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/parameters-section-structure.html) for more details).
+
+```
+Route53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+        HostedZoneId: !Ref Route53HostedZoneId
+        Comment: !Ref Domain
+        Name: !Join [ ".", [ !Ref Domain, ""]]
+        Type: CNAME
+        TTL: 60
+        ResourceRecords:
+        - !GetAtt [ ElasticLoadBalancer, DNSName ]
+```
+
+This template creates DNS entries which send traffic to your load balancer using a more sensible URL.  The ELB has your SSL certificate installed on it by Amazon; this is used to terminate SSL and the traffic is then passed unencrypted to your backend instances.
+
+```
++ +--  3 lines: ElasticLoadBalancer:------|+ +--  3 lines: ElasticLoadBalancer:---------------
+          AvailabilityZones: !GetAZs      |          AvailabilityZones: !GetAZs
+          CrossZone: true                 |          CrossZone: true
+          Listeners:                      |          Listeners:
+          - LoadBalancerPort: 80          |          - LoadBalancerPort: 80
+            InstancePort: 8080            |            InstancePort: 8080
+            Protocol: HTTP                |            Protocol: HTTP
+  ----------------------------------------|          - LoadBalancerPort: 443
+  ----------------------------------------|            InstancePort: 8080
+  ----------------------------------------|            Protocol: HTTPS
+  ----------------------------------------|            InstanceProtocol: HTTP
+  ----------------------------------------|            SSLCertificateId: !Ref SSLCertificate
+  ----------------------------------------|            PolicyNames: []
+          HealthCheck:                    |          HealthCheck:
+              Target: "TCP:8080"          |              Target: "TCP:8080"
+              HealthyThreshold: "3"       |              HealthyThreshold: "3"
+              UnhealthyThreshold: "5"     |              UnhealthyThreshold: "5"
+              Interval: "6"               |              Interval: "6"
+              Timeout: "5"                |              Timeout: "5"
++ +--  2 lines: SecurityGroups:-----------|+ +--  2 lines: SecurityGroups:--------------------
+```
+
+The other key difference is this addition to the ElasticLoadBalancer resource.  This tells it to take HTTPS traffic on port 443 (`Protocol`, `LoadBalancerPort`), use our certificate (`SSLCertificateId`) and pass that using HTTP to the instances on port 8080 (`InstanceProtocol`, `InstancePort`).
+
+After a couple of minutes, the servers should be up and you should now be able to access you app on the domain you specified.  For example, my app was accessible on http://frontend.demo.benmade.it and https://frontend.demo.benmade.it
+
+You can now tear down the stack to stop paying for the resources.  Note that you'll keep paying a small fee ($0.50 per month) for the Route 53 Hosted Zone until you delete that manually but we'll want that for the latter demos.
+
+## Step 3 - Hard coded backend certificates
+
+This is all pretty common stuff, it gets much more interesting when we start encrypting the connections to our backend instances.
+
+This can be acheived using the [cf_backend_cert.yml](cf_backend_cert.yml) template.
+
+```
+AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Limit access to the app instances
+        SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+          SourceSecurityGroupId: !GetAtt [ElbSecurityGroup, GroupId]
+```
+
+The first big change is that we've changed the security group so that the firewalls don't permit access to the backend instances on port 8080; they can now only be accessed on port 8443 which we'll use for the encrypted traffic.
+
+```
+AppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+    Properties:
+        ImageId: ami-a4d44ed7
+        SecurityGroups:
+        - !GetAtt [AppSecurityGroup, GroupId]
+        InstanceType: t2.nano
+        UserData:
+            !Base64 |
+                #cloud-config
+                ---
+                packages:
+                - git
+                - python-pip
+                - stunnel4
+                write_files:
+                - content: |
+                    from flask import Flask
+                    app = Flask(__name__)
+
+
+                    @app.route("/")
+                    def hello():
+                        return "Hello, World!"
+
+                    if __name__ == "__main__":
+                        app.run(port=8080)
+                  path: /etc/hello.py
+                  permissions: '0644'
+                - content: |
+                    -----BEGIN PRIVATE KEY-----
+                      >>> SNIPPED FOR BREVITY <<<
+                    -----END PRIVATE KEY-----
+                  path: /etc/stunnel/elb-backend-private.key
+                  permissions: '0400'
+                - content: |
+                    -----BEGIN CERTIFICATE-----
+                      >>> SNIPPED FOR BREVITY <<<
+                    -----END CERTIFICATE-----
+                  path: /etc/stunnel/elb-backend-cert.pem
+                  permissions: '0444'
+                - content: |
+                    output=/var/log/stunnel-elb-backend.log
+                    pid=/var/run/stunnel4/elb-backend.pid
+                    setuid=stunnel4
+                    setgid=stunnel4
+                    client=no
+
+                    [ELB]
+                    cert=/etc/stunnel/elb-backend-cert.pem
+                    key=/etc/stunnel/elb-backend-private.key
+                    accept=0.0.0.0:8443
+                    connect=127.0.0.1:8080
+                  path: /etc/stunnel/elb-backend.conf
+                  permissions: '0644'
+                runcmd:
+                - pip install flask gunicorn gevent
+                - sed -i 's/^ENABLED=0/ENABLED=1/' /etc/default/stunnel4
+                - touch /var/log/stunnel-elb-backend.log
+                - chown stunnel4 /var/log/stunnel-elb-backend.log /etc/stunnel/elb-backend-private.key /etc/stunnel/elb-backend-cert.pem
+                - systemctl restart stunnel4
+                - cd /etc/ && gunicorn hello:app -b 127.0.0.1:8080 -k gevent
+```
+
+The biggest changes are in the launch configuration which is used to setup the backend instances.  Here I have used the launch configuration to put a self signed SSL certificate and it's private key onto the server and setup stunnel4 to terminate SSL. It goes without saying that **THIS IS REALLY BAD PRACTICE**, sensitive key data like this should not be committed to Git (especially but not exclusively into a private repo).  You might also think that it is OK to generate the keys locally and insert it into the template just before using it to deploy the stack in CloudFormation.   That's marginally better but the private key will still be human readable to anyone with access to CloudFormation (via the Template tab).
+
+It is possible to argue that this is a low risk because: only trusted admins will be able to access the CloudFormation console; the developer who produced the data probably used sensible settings and cleared up their local copy sensibly; and the certificate is self signed and therefore not useful for anything except this app.  That said, I've seen plenty of examples where we make these sort of compromisses now based on assumptions about how we're using things which then prove to be false in the future.  I'd therefore be keen to pick a solution which better fits with other developers (and my) future assumption that things like private keys have been kept secret.
+
+If you created this stack, then don't forget to delete it.
+
+## Step 4 - Automatically generated certificates
+
+I'd prefer a solution which:
+
+* doesn't rely on the developer
