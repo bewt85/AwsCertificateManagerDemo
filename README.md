@@ -22,7 +22,7 @@ Don't hesitate to get in touch if you have any questions or feedback on this dem
 
 ## Step 1 - A load balanced app
 
-We'll start slowly with our [first template](cf_simple.yml) which sets up a load balancer with an autoscaling group of servers behind it.  There is no connection encryption in this example.  Our aim here is to make you more comfortable with the CloudFormation interface and walk you through some of the key sections of a simple template.
+We'll start slowly with our [first template](cf_simple.yml) which sets up a load balancer with an auto scaling group of servers behind it.  There is no connection encryption in this example.  Our aim here is to make you more comfortable with the CloudFormation interface and walk you through some of the key sections of a simple template.
 
 To give it a go just download [the template](cf_simple.yml) and log into the AWS console and select the CloudFormation service (or [click this link](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=simple)).  These templates use a hard-coded AMI which only works in the Ireland region.  Select the option to upload the CloudFormation template to S3 and browse to where you downloaded `cf_simple.yml`.
 
@@ -39,14 +39,14 @@ The template is written in [YAML](http://yaml.org/) and can have a few top level
 * `AWSTemplateFormatVersion` which always seems to be `2010-09-09`;
 * `Parameters` which describes the inputs to the templates;
 * `Resources` which defines and configures the AWS resources we want; and
-* `Outputs` which are values we want to output from the template for refrence or so that they can be consumed by other templates.  
+* `Outputs` which are values we want to output from the template for reference or so that they can be consumed by other templates.  
 
 You can also add a `Description` for the template and `Mappings` which can be used to lookup values using others (e.g. lookup the correct AMI for a region).  In this example I've not even used `Parameters` because we don't need any.
 
 The template creates a few resources:
 
 * `AppSecurityGroup` - a security group (`Type: AWS::EC2::SecurityGroup`) to configure firewall rules for the app instances;
-* `AppScalingGroup` - an autoscaling group (`Type: AWS::AutoScaling::AutoScalingGroup`) for the app instances;
+* `AppScalingGroup` - an auto scaling group (`Type: AWS::AutoScaling::AutoScalingGroup`) for the app instances;
 * `AppLaunchConfig` - some configuration (`Type: AWS::AutoScaling::LaunchConfiguration`) for each of the app instances (including the hello world source code);
 * `ElbSecurityGroup` - a security group (`Type: AWS::EC2::SecurityGroup`) to configure firewall rules for the load balancer; and
 * `ElasticLoadBalancer` - the load balancer (`Type: AWS::ElasticLoadBalancing::LoadBalancer`) itself.
@@ -70,7 +70,7 @@ AppScalingGroup:
             MaxBatchSize: 1
 ```
 
-The first question you might have is "Why are you using an autoscaling group to load just one instance, why not just make an EC2 instance"?  Well it's a pretty convenient way of configuring which instances the load balancer should send traffic to; I can easily add health checks to recreate the instances if they die; and it makes it easier to add instances in the future.  If I had started with an EC2 instance, these features would have been harder to add later.  Autoscale groups are free so why not use them?
+The first question you might have is "Why are you using an auto scaling group to load just one instance, why not just make an EC2 instance"?  Well it's a pretty convenient way of configuring which instances the load balancer should send traffic to; I can easily add health checks to recreate the instances if they die; and it makes it easier to add instances in the future.  If I had started with an EC2 instance, these features would have been harder to add later.  Autoscale groups are free so why not use them?
 
 You might also wonder why I set `DesiredCapacity` to 1 and the `MaxSize` to 2.  The reason is that the `UpdatePolicy` creates new servers before deleting old ones and CloudFormation gets upset if I don't set `MaxSize` to be N+1.  If I was doing this properly, I would also use health checks to make sure that new instances were up and running before deleting old ones, but I'm trying to keep the demo simple.
 
@@ -192,7 +192,7 @@ You can now tear down the stack to stop paying for the resources.  Note that you
 
 This is all pretty common stuff, it gets much more interesting when we start encrypting the connections to our backend instances.
 
-This can be acheived using the [cf_backend_cert.yml](cf_backend_cert.yml) template.
+This can be achieved using the [cf_backend_cert.yml](cf_backend_cert.yml) template.
 
 ```
 AppSecurityGroup:
@@ -276,7 +276,7 @@ AppLaunchConfig:
 
 The biggest changes are in the launch configuration which is used to setup the backend instances.  Here I have used the launch configuration to put a self signed SSL certificate and it's private key onto the server and setup stunnel4 to terminate SSL. It goes without saying that **THIS IS REALLY BAD PRACTICE**.  Sensitive key data like this should not be committed to Git (especially a public repo but I'd strongly encourage not doing so in a private repo either).  You might also think that it is OK to generate the keys locally and insert it into the template just before using it to deploy the stack in CloudFormation.   That's marginally better but the private key will still be human readable to anyone with access to CloudFormation (via the Template tab).
 
-It is possible to argue that this is a low risk because: only trusted admins will be able to access the CloudFormation console; the developer who produced the data probably used sensible settings and cleared up their local copy sensibly; and the certificate is self signed and therefore not useful for anything except this app.  That said, I've seen plenty of examples where we make these sort of compromisses now based on assumptions about how we're using things which then prove to be false in the future.  I'd therefore be keen to pick a solution which better fits with other developers (and my) future assumption that things like private keys have been kept secret.
+It is possible to argue that this is a low risk because: only trusted admins will be able to access the CloudFormation console; the developer who produced the data probably used sensible settings and cleared up their local copy sensibly; and the certificate is self signed and therefore not useful for anything except this app.  That said, I've seen plenty of examples where we make these sort of compromises now based on assumptions about how we're using things which then prove to be false in the future.  I'd therefore be keen to pick a solution which better fits with other developers (and my) future assumption that things like private keys have been kept secret.
 
 If you created this stack, then don't forget to delete it.
 
@@ -289,7 +289,7 @@ I'd prefer a solution which:
 * doesn't make it easy for an administrator to read the secret keys (I prefer solutions which make it easy to hide secrets or at least audit that they've been read); and
 * uses automation to reliably get round these issues.
 
-One pattern which meets these objectives is to use AWS Lambda as part of a Custom Resource in the CloudFormation template.  Custom Resources allow you to supply code which is run when a stack is created or updated.  In our case, that code is going to: create a new certificate, private and public key when a stack is created; save the private key and certificate into an S3 bucket which most people cannot access; load the public key into the load balancer so that only instances with the private key will be trusted; grant permission to the EC2 instances to load the private key and certificate (and only their own) from the S3 bucket at startup; and reuse an existing certificate and private key for a new instance if the stack is updated or if a new instance is added to the autoscaling group.
+One pattern which meets these objectives is to use AWS Lambda as part of a Custom Resource in the CloudFormation template.  Custom Resources allow you to supply code which is run when a stack is created or updated.  In our case, that code is going to: create a new certificate, private and public key when a stack is created; save the private key and certificate into an S3 bucket which most people cannot access; load the public key into the load balancer so that only instances with the private key will be trusted; grant permission to the EC2 instances to load the private key and certificate (and only their own) from the S3 bucket at startup; and reuse an existing certificate and private key for a new instance if the stack is updated or if a new instance is added to the auto scaling group.
 
 The Lambda is just a Python script which has a method which is configured to handle events created by CloudFormation.  The code is in [certificate_lambda](certificate_lambda).  The code needs to be packaged up into a zip file before it can be deployed, this can be done using the [package.sh](certificate_lambda/package.sh) script.  Take a look at the [README](certificate_lambda/README.md) for instructions on creating your own copy of the Lambda.
 
