@@ -16,11 +16,13 @@ This repo leads you through the steps to apply end-to-end encryption for a colle
 
 ![User traffic is terminated on ELB, traffic is re-encrypted between the ELB and instances using a self signed certificate which is created by AWS Lambda and loaded from S3 when the instances boot](https://github.com/bewt85/AwsCertificateManagerDemo/raw/master/images/acm_s3_ssl_cert_demo.png "Architecture overview")
 
-As an aside, this repo also gives you a bit of background on how CloudFormation works and how to use Custom Resources (powered by Lambda) to do more powerful things.
+Hopefully you should leave with an impression of the power of CloudFormation when used with Lambda and some ideas of how you might want to use it.  It also gives you a bit of insight into some of the tools and techniques drie use to build our [platform as a service](https://www.drie.co).
+
+Don't hesitate to get in touch if you have any questions or feedback on this demo or questions about how drie works behind the scenes.
 
 ## Step 1 - A load balanced app
 
-[The first template](cf_simple.yml) sets up a load balancer with an autoscaling group of servers behind it.  There is no connection encryption in this example.
+We'll start slowly with our [first template](cf_simple.yml) which sets up a load balancer with an autoscaling group of servers behind it.  There is no connection encryption in this example.  Our aim here is to make you more comfortable with the CloudFormation interface and walk you through some of the key sections of a simple template.
 
 To give it a go just download [the template](cf_simple.yml) and log into the AWS console and select the CloudFormation service (or [click this link](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=simple)).  These templates use a hard-coded AMI which only works in the Ireland region.  Select the option to upload the CloudFormation template to S3 and browse to where you downloaded `cf_simple.yml`.
 
@@ -39,7 +41,7 @@ The template is written in [YAML](http://yaml.org/) and can have a few top level
 * `Resources` which defines and configures the AWS resources we want; and
 * `Outputs` which are values we want to output from the template for refrence or so that they can be consumed by other templates.  
 
-You can also add a `Description` for the template and `Mappings` which can be used to lookup values using others (e.g. lookup the correct AMI using a region).  In this example I've not even used `Parameters` because we don't need any.
+You can also add a `Description` for the template and `Mappings` which can be used to lookup values using others (e.g. lookup the correct AMI for a region).  In this example I've not even used `Parameters` because we don't need any.
 
 The template creates a few resources:
 
@@ -120,7 +122,7 @@ First I need to create a "Hosted Zone" in [Route 53](https://console.aws.amazon.
 
 When you have the Hosted Zone setup, make a note of its "Hosted Zone ID" which in my case was "Z2MFW6JEDJ91GG".
 
-Next we need to create a new frontend certificate in [Amazon Certificate Manager](https://eu-west-1.console.aws.amazon.com/acm/home?region=eu-west-1#/) (ACM).  To do this, just click "Request a certificate" and provide the domain you want to get a certificate for.  In my case I picked a wildcard certificate for "*.demo.benmade.it" which I use for all of the demos.
+Next we need to create a new frontend certificate in [Amazon Certificate Manager](https://eu-west-1.console.aws.amazon.com/acm/home?region=eu-west-1#/) (ACM).  To do this, just click "Request a certificate" and provide the domain you want to get a certificate for.  In my case I picked a wildcard certificate for "\*.demo.benmade.it" which I use for all of the demos.
 
 ACM checks that you're authorised to have this certificate by emailing the following:
 
@@ -272,7 +274,7 @@ AppLaunchConfig:
                 - cd /etc/ && gunicorn hello:app -b 127.0.0.1:8080 -k gevent
 ```
 
-The biggest changes are in the launch configuration which is used to setup the backend instances.  Here I have used the launch configuration to put a self signed SSL certificate and it's private key onto the server and setup stunnel4 to terminate SSL. It goes without saying that **THIS IS REALLY BAD PRACTICE**.  Sensitive key data like this should not be committed to Git (especially but not exclusively into a private repo).  You might also think that it is OK to generate the keys locally and insert it into the template just before using it to deploy the stack in CloudFormation.   That's marginally better but the private key will still be human readable to anyone with access to CloudFormation (via the Template tab).
+The biggest changes are in the launch configuration which is used to setup the backend instances.  Here I have used the launch configuration to put a self signed SSL certificate and it's private key onto the server and setup stunnel4 to terminate SSL. It goes without saying that **THIS IS REALLY BAD PRACTICE**.  Sensitive key data like this should not be committed to Git (especially a public repo but I'd strongly encourage not doing so in a private repo either).  You might also think that it is OK to generate the keys locally and insert it into the template just before using it to deploy the stack in CloudFormation.   That's marginally better but the private key will still be human readable to anyone with access to CloudFormation (via the Template tab).
 
 It is possible to argue that this is a low risk because: only trusted admins will be able to access the CloudFormation console; the developer who produced the data probably used sensible settings and cleared up their local copy sensibly; and the certificate is self signed and therefore not useful for anything except this app.  That said, I've seen plenty of examples where we make these sort of compromisses now based on assumptions about how we're using things which then prove to be false in the future.  I'd therefore be keen to pick a solution which better fits with other developers (and my) future assumption that things like private keys have been kept secret.
 
@@ -301,4 +303,49 @@ ElbBackendCertificate:
         AppS3Bucket: !Ref CertificateBucket
 ```
 
-This new resource triggers the Lambda and passes the properties used when you created the stack. << TODO more here 
+*Custom resource in [cf_automated.yml](cf_automated.yml)*
+
+This new resource triggers the Lambda and passes the properties used when you created the stack. The Lambda returns a dictionary of data including `PublicKey` and `CertificateS3Key` which are used later in the template.
+
+```
++ +-- 23 lines: ElasticLoadBalancer:---------------------------------------------------|+ +-- 23 lines: ElasticLoadBalancer:-----------------------------------
+          - !GetAtt [ElbSecurityGroup, GroupId]                                        |          - !GetAtt [ElbSecurityGroup, GroupId]
+          Policies:                                                                    |          Policies:
+          - PolicyName: BackendPublicKeyPolicy                                         |          - PolicyName: BackendPublicKeyPolicy
+            PolicyType: PublicKeyPolicyType                                            |            PolicyType: PublicKeyPolicyType
+            Attributes:                                                                |            Attributes:
+            - Name: PublicKey                                                          |            - Name: PublicKey
+              Value: |                                                                 |              Value: !GetAtt [ ElbBackendCertificate, PublicKey ]      
+                  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1rCfBQn1Sg1Q97FbQus0     |  ---------------------------------------------------------------------
+                  8khN3k1IqQn5+Vy8rvVLOEIFhzwgcKtNQ5zGEDETOYk0wqF651OCsvJOzklM5oLg     |  ---------------------------------------------------------------------
+                  IG5B1ErnLC3yc1FYwm8RhC9ISYT5ToUy/gDAVUjKHqZFH2xyS/efopRAx5cDTy1Q     |  ---------------------------------------------------------------------
+                  qgXZUrPVnT6XnibtsZiB4qiXnLly3IW3RXzr0kDdbFvWb8C6zT1GWU1qAyYtr4gH     |  ---------------------------------------------------------------------
+                  XVulTlxQCaE/F/IftplHzCmdsXrnzJ7Gd7O8ZC3RzzueZbmmvppSSZbst6rl47zP     |  ---------------------------------------------------------------------
+                  2eIqgKJX+xU/2cwAqPiYHjc7HSWGRM1UOGKebDmQ5qE+M0zMVbTISrqV6YjYTzCj     |  ---------------------------------------------------------------------
+                  iQIDAQAB                                                             |  ---------------------------------------------------------------------
+          - PolicyName: BackendServerAuthenticationPolicy                              |          - PolicyName: BackendServerAuthenticationPolicy
+            PolicyType: BackendServerAuthenticationPolicyType                          |            PolicyType: BackendServerAuthenticationPolicyType
+            Attributes:                                                                |            Attributes:
+            - Name: PublicKeyPolicyName                                                |            - Name: PublicKeyPolicyName
+              Value: BackendPublicKeyPolicy                                            |              Value: BackendPublicKeyPolicy
+            InstancePorts: [ "8443" ]                                                  |            InstancePorts: [ "8443" ]
+```
+
+Here is where the resource is actually used.  In this case the Load Balancer resource has used the `GetAtt` function to lookup the `PublicKey` attribute created by the Lambda and used it in place of the hard coded value.
+
+Later I've removed the hard coded private key information from the Launch configuration.  This has been replaced with a script which pulls the private key and certificate from an S3 bucket and loads them into the correct locations.
+
+## Still TODO
+
+This is a big improvement over the previous implementation because lots of sources of human error have been removed and it's a lot easier to limit access to the relevant keys using IAM policies on the S3 bucket.  There are a few extra improvements you should consider before using this in production.  This includes:
+
+* Renewing certificates before they expire (e.g. using a Lambda to scan the S3 bucket and update the CloudFormation template as required);
+* Load the certificates without burning down the server (e.g. using an agent on the server to pull the new certificate or maybe using AWS Code Deploy);
+* Encrypt the private key (e.g. using KMS so that it can only be decrypted on the server); and
+* Deploy an app more interesting than "Hello, World!".
+
+## Takeaways
+
+Hopefully this has given you a bit of a taste for how you can use CloudFormation and Lambda together to acheive more complicated automation tasks.  drie use similar techniques extensively as part of our service which takes care or routine maintenance like certificate management, firewalls and app scaling so that you have more time to tackle technical debt and new features.
+
+If you've got questions about how this or drie work then please get in touch.
