@@ -1,27 +1,20 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
 Parameters:
-    KeyName:
-        Description: The EC2 Key Pair to allow SSH access to the instances
-        Type: AWS::EC2::KeyPair::KeyName
-        ConstraintDescription: must be the name of an existing EC2 KeyPair
-    AppsDomain:
-        Description: Base domain shared between all apps
+    Domain:
+        Description: A domain to host your web service on (e.g. foo.demo.benmade.it)
         Type: String
-    AppsDomainSSLCertificate:
+    SSLCertificate:
         Type: String
-        Description: ARN of AWS Certificate Manager certificate for *.{AppsDomain}
+        Description: ARN of AWS Certificate Manager certificate for Domain
     Route53HostedZoneId:
         Description: ID for the Route53 Hosted Zone which will hold the CNAME for this app
-        Type: String
+        Type: AWS::Route53::HostedZone::Id
     CertificateBucket:
         Description: Bucket used to store app certificates
         Type: String
     CreateElbBackendCertificatesArn:
         Description: ARN for the Lambda used to create backend certificates
-        Type: String
-    AppName:
-        Default: https_demo_auto
         Type: String
 
 Resources:
@@ -29,8 +22,8 @@ Resources:
         Type: Custom::ElbBackendCertificate
         Properties:
             ServiceToken: !Ref CreateElbBackendCertificatesArn
-            AppDomain: !Join [".", [ !Ref AppName, !Ref AppsDomain ]]
-            AppName: !Ref AppName
+            AppDomain: !Ref Domain
+            AppName: !Ref Domain
             AppS3Bucket: !Ref CertificateBucket
 
     AppSecurityGroup:
@@ -81,7 +74,7 @@ Resources:
                   Action:
                   - "s3:Get*"
                   - "s3:Head*"
-                  Resource: !Join [ "", [ "arn:aws:s3:::", !Ref CertificateBucket, "/backend-certificate-", !Ref AppName, ".json" ] ]
+                  Resource: !Join [ "", [ "arn:aws:s3:::", !Ref CertificateBucket, "/backend-certificate-", !Ref Domain, ".json" ] ]
             Roles:
                 - Ref: AppRole
 
@@ -97,7 +90,6 @@ Resources:
         Properties:
             ImageId: ami-a4d44ed7
             IamInstanceProfile: !Ref AppProfile
-            KeyName: !Ref KeyName
             SecurityGroups:
             - !GetAtt [AppSecurityGroup, GroupId]
             InstanceType: t2.nano
@@ -118,7 +110,7 @@ Resources:
 
                             @app.route("/")
                             def hello():
-                                return "Hello World!"
+                                return "Hello, World!"
 
                             if __name__ == "__main__":
                                 app.run(port=8080)
@@ -168,7 +160,7 @@ Resources:
                           permissions: '0644'
                         runcmd:
                         - pip install flask gunicorn gevent boto3
-                        - /usr/local/bin/get_certs.py ${CertificateBucket} backend-certificate-${AppName}.json
+                        - /usr/local/bin/get_certs.py ${CertificateBucket} backend-certificate-${Domain}.json
                         - sed -i 's/^ENABLED=0/ENABLED=1/' /etc/default/stunnel4
                         - touch /var/log/stunnel-elb-backend.log
                         - chown stunnel4 /var/log/stunnel-elb-backend.log /etc/stunnel/elb-backend-private.key /etc/stunnel/elb-backend-cert.pem
@@ -179,8 +171,8 @@ Resources:
         Type: AWS::Route53::RecordSet
         Properties:
             HostedZoneId: !Ref Route53HostedZoneId
-            Comment: !Ref AppName
-            Name: !Join [ ".", [ !Ref AppName, !Ref AppsDomain, ""]]
+            Comment: !Ref Domain
+            Name: !Join [ ".", [ !Ref Domain, ""]]
             Type: CNAME
             TTL: 60
             ResourceRecords:
@@ -214,7 +206,7 @@ Resources:
               InstancePort: 8443
               Protocol: HTTPS
               InstanceProtocol: HTTPS
-              SSLCertificateId: !Ref AppsDomainSSLCertificate
+              SSLCertificateId: !Ref SSLCertificate
               PolicyNames: []
             HealthCheck:
                 Target: "TCP:8443"
@@ -239,4 +231,4 @@ Resources:
 
 Outputs:
     LoadBalancer:
-        Value: !Join [ ".", [ !Ref AppName, !Ref AppsDomain ]]
+        Value: !Ref Domain
