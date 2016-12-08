@@ -10,6 +10,8 @@ AWS Cerificate Manager (ACM) is a great tool to create SSL certificates and depl
 
 The challenge is to securely connect the load balancer to the instances actually serving the request.  Fortunately ELBs support uploading a public key for a self-signed certificate, although this is somewhat non-trivial.
 
+This article is also [published on Medium](https://medium.com/@benmadeit/e2e-encryption-with-lambda-cloudformation-and-acm-2b8020d6c6a4) if you'd like to add comments or suggestions.
+
 ## Aims
 
 This repo leads you through the steps to apply end-to-end encryption for a collection of instances using AWS Certificate Manager (ACM), Elastic Load Balancer (ELB), AWS Lambda, CloudFormation and Amazon Simple Storage Service (S3).  Eventually your architecture will look a bit like this:
